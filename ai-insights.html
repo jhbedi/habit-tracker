@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="getItRight - AI-powered habit analysis, forecasting, and intelligent suggestions">
+    <title>getItRight - AI Insights</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="theme-switch.js"></script>
+</head>
+
+<body>
+    <div class="app-container dashboard">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <svg class="logo-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="6"></circle>
+                    <circle cx="12" cy="12" r="2"></circle>
+                </svg>
+                <h1>getItRight</h1>
+            </div>
+            <nav class="nav">
+                <a href="index.html" class="nav-link">Dashboard</a>
+                <a href="tracking.html" class="nav-link">Track Progress</a>
+                <a href="add-goal.html" class="nav-link">Add Goal</a>
+                <a href="ai-insights.html" class="nav-link active">AI Insights</a>
+                <button id="themeToggleBtn" class="nav-icon-btn" title="Toggle Theme">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+                <button class="nav-logout" onclick="handleLogout()" title="Sign out">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                </button>
+            </nav>
+        </header>
+
+        <!-- AI Insights Content -->
+        <main class="main-content ai-page">
+
+            <!-- Page Title + Sync -->
+            <div class="ai-page-header">
+                <div>
+                    <h2 class="ai-page-title">AI Insights</h2>
+                    <p class="ai-page-subtitle" id="syncStatus">Analyzing your habits with 4 algorithms</p>
+                </div>
+                <div class="ai-header-actions">
+                    <button class="btn-toggle" id="toggleCompletedAIBtn" onclick="toggleCompletedAI()">Show
+                        Completed</button>
+                    <button class="sync-btn" id="syncBtn" onclick="syncAndAnalyze()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <!-- Overview Stats Row -->
+            <section class="ai-stats-row" id="aiStatsRow">
+                <div class="ai-stat">
+                    <span class="ai-stat-value" id="statGoals">—</span>
+                    <span class="ai-stat-label">Goals Tracked</span>
+                </div>
+                <div class="ai-stat">
+                    <span class="ai-stat-value" id="statAvgCompletion">—</span>
+                    <span class="ai-stat-label">Avg Completion</span>
+                </div>
+                <div class="ai-stat">
+                    <span class="ai-stat-value" id="statPeakDay">—</span>
+                    <span class="ai-stat-label">Peak Day</span>
+                </div>
+                <div class="ai-stat">
+                    <span class="ai-stat-value" id="statTopHabit">—</span>
+                    <span class="ai-stat-label">Strongest Habit</span>
+                </div>
+            </section>
+
+            <!-- Two Column Layout -->
+            <div class="ai-grid-2col">
+
+                <!-- Left: Habit Clusters -->
+                <section class="ai-card" id="clusterSection">
+                    <div class="ai-card-header">
+                        <h3>Habit Clusters</h3>
+                        <span class="ai-card-tag">Grouping</span>
+                    </div>
+                    <div id="clusterContent" class="ai-card-body">
+                        <div class="ai-skeleton"></div>
+                    </div>
+                </section>
+
+                <!-- Right: Productivity Heatmap -->
+                <section class="ai-card" id="productivitySection">
+                    <div class="ai-card-header">
+                        <h3>Weekly Productivity</h3>
+                        <span class="ai-card-tag">Trends</span>
+                    </div>
+                    <div id="productivityContent" class="ai-card-body">
+                        <div class="ai-skeleton"></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Forecast (Full Width, only goals with enough data) -->
+            <section class="ai-card" id="forecastSection">
+                <div class="ai-card-header">
+                    <h3>Habit Forecast</h3>
+                    <span class="ai-card-tag">Predictions</span>
+                </div>
+                <div id="forecastContent" class="ai-card-body">
+                    <div class="ai-skeleton"></div>
+                </div>
+            </section>
+
+            <!-- Goal Quality (Full Width, clean table) -->
+            <section class="ai-card" id="nlpSection">
+                <div class="ai-card-header">
+                    <h3>Goal Quality Scores</h3>
+                    <span class="ai-card-tag">Assessment</span>
+                </div>
+                <div id="nlpContent" class="ai-card-body">
+                    <div class="ai-skeleton"></div>
+                </div>
+            </section>
+
+            <!-- Empty State -->
+            <div class="empty-state" id="emptyState" style="display: none;">
+                <p>No goals yet. <a href="add-goal.html">Add a goal</a> to unlock AI-powered insights.</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast">
+        <span class="toast-message">Updated!</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="supabase.js"></script>
+    <script src="auth-guard.js"></script>
+    <script src="ai-engine.js"></script>
+    <script src="gemini.js"></script>
+    <script src="ai-insights.js"></script>
+    <script src="chat-widget.js"></script>
+</body>
+
+</html>

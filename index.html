@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="getItRight - Dashboard with analytics and progress visualization">
+    <title>getItRight - Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="theme-switch.js"></script>
+</head>
+
+<body>
+    <div class="app-container dashboard">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <svg class="logo-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="6"></circle>
+                    <circle cx="12" cy="12" r="2"></circle>
+                </svg>
+                <h1>getItRight</h1>
+            </div>
+            <nav class="nav">
+                <a href="index.html" class="nav-link active">Dashboard</a>
+                <a href="tracking.html" class="nav-link">Track Progress</a>
+                <a href="add-goal.html" class="nav-link">Add Goal</a>
+                <a href="ai-insights.html" class="nav-link">AI Insights</a>
+                <button id="themeToggleBtn" class="nav-icon-btn" title="Toggle Theme">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+                <button class="nav-logout" onclick="handleLogout()" title="Sign out">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                </button>
+            </nav>
+        </header>
+
+        <!-- Dashboard Content -->
+        <main class="main-content">
+            <!-- Active Tracking Banner (Hidden by default) -->
+            <div id="activeTrackingBanner" class="tracking-banner" style="display: none;">
+                <div class="tracking-banner-content">
+                    <span class="tracking-dot"></span>
+                    <span id="trackingStatusText">Tracking time on <strong>example.com</strong> for <strong
+                            id="trackingHabitName">Habit</strong></span>
+                </div>
+                <div class="tracking-timer" id="trackingTimerDisplay">00:00</div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary btn-sm" onclick="stopSmartLinkTracking(true)">Stop</button>
+                </div>
+            </div>
+
+            <!-- Smart Link Launcher -->
+            <section class="section-header">
+                <h2>Smart Link Tracker</h2>
+            </section>
+            <div class="smart-launcher-card">
+                <div class="smart-launcher-icon">
+                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1">
+                        </path>
+                    </svg>
+                </div>
+                <input type="text" id="smartLinkInput"
+                    placeholder="Paste a website link (e.g. leetcode.com or instagram.com) to track time..."
+                    class="smart-launcher-input" autocomplete="off" onkeypress="handleSmartLinkEnter(event)">
+                <button class="smart-launcher-btn" onclick="openSmartLinkModal()">Launch & Track</button>
+            </div>
+
+            <!-- Smart Link Modal -->
+            <div id="smartLinkModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Select Habit for Tracking</h2>
+                        <button class="close-btn" onclick="closeSmartLinkModal()">×</button>
+                    </div>
+                    <div class="form-group">
+                        <label>What are you tracking on <strong id="smartLinkDisplayUrl"
+                                style="color:var(--accent);">this site</strong>?</label>
+                        <select id="smartLinkHabitSelect" class="form-control" required>
+                            <option value="">Select a habit...</option>
+                            <!-- Habits injected via JS -->
+                        </select>
+                        <p class="form-hint" id="smartLinkHint"></p>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-secondary" onclick="closeSmartLinkModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="startSmartLinkTracking()">Start Tracking</button>
+                    </div>
+                </div>
+            </div>
+
+            <section class="section-header">
+                <h2>Weekly Progress</h2>
+            </section>
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-value" id="weeklyDaysCompleted">0</span>
+                    <span class="stat-label">Days Completed</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="weeklyDaysTarget">0</span>
+                    <span class="stat-label">Days Target</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="weeklyProgress">0%</span>
+                    <span class="stat-label">Weekly Progress</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="weeklyHours">0h</span>
+                    <span class="stat-label">Hours This Week</span>
+                </div>
+            </section>
+
+            <!-- Charts Grid -->
+            <section class="charts-grid" id="chartsGrid">
+                <!-- Line Chart: Progress Trend -->
+                <div class="chart-card full-width">
+                    <div class="chart-header">
+                        <div>
+                            <h3>Daily Progress Trend</h3>
+                            <p class="chart-subtitle" id="trendSubtitle">Goals completed per day over the last 30 days
+                            </p>
+                        </div>
+                        <div class="custom-dropdown" id="customTrendDropdown">
+                            <button class="dropdown-button">Weekly Day wise</button>
+                            <div class="dropdown-menu">
+                                <div class="dropdown-option" data-value="weekly-daily">Weekly Day wise</div>
+                                <div class="dropdown-option" data-value="monthly-weekly">Monthly Week wise</div>
+                                <div class="dropdown-option" data-value="monthly-daily">Monthly Day wise</div>
+                                <div class="dropdown-option" data-value="yearly">Yearly View</div>
+                            </div>
+                            <input type="hidden" id="trendViewDropdown" value="weekly-daily">
+                        </div>
+                    </div>
+                    <div class="chart-container line">
+                        <canvas id="trendChart"></canvas>
+                        <div class="chart-month-label" id="trendMonthLabel"></div>
+                    </div>
+                </div>
+
+                <!-- Bar Chart 1: Goal Progress -->
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <div>
+                            <h3>Goal Progress</h3>
+                            <p class="chart-subtitle">Days completed vs goal duration</p>
+                        </div>
+                        <button class="btn-toggle" id="toggleCompletedBtn" onclick="toggleCompletedGoals()">Show
+                            Completed</button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="progressChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Bar Chart 2: Time Target -->
+                <div class="chart-card">
+                    <h3>Time Invested</h3>
+                    <p class="chart-subtitle">Hours spent per goal</p>
+                    <div class="chart-container">
+                        <canvas id="timeChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Pie Chart 1: Priority Distribution -->
+                <div class="chart-card">
+                    <h3>By Priority</h3>
+                    <p class="chart-subtitle">Time distribution across priorities</p>
+                    <div class="chart-container pie">
+                        <canvas id="priorityChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Pie Chart 2: Effort Distribution -->
+                <div class="chart-card">
+                    <h3>By Effort Level</h3>
+                    <p class="chart-subtitle">Time distribution across effort levels</p>
+                    <div class="chart-container pie">
+                        <canvas id="effortChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Overall Goal Progress Section -->
+            <section class="section-header">
+                <h2>Overall Progress</h2>
+            </section>
+            <section class="stats-grid stats-grid-2">
+                <div class="stat-card large">
+                    <span class="stat-value highlight-accent" id="overallDaysCompleted">0 / 0</span>
+                    <span class="stat-label">Total Days Completed</span>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="overallDaysBar" style="width: 0%"></div>
+                    </div>
+                    <span class="stat-sublabel" id="overallDaysPercent">0% of your total goal</span>
+                </div>
+                <div class="stat-card large">
+                    <span class="stat-value highlight-success" id="overallHoursCompleted">0h / 0h</span>
+                    <span class="stat-label">Total Hours Invested</span>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar success" id="overallHoursBar" style="width: 0%"></div>
+                    </div>
+                    <span class="stat-sublabel" id="overallHoursPercent">0% of your time goal</span>
+                </div>
+            </section>
+
+            <!-- Empty State -->
+            <div class="empty-state" id="emptyState" style="display: none;">
+                <p>No goals yet. <a href="add-goal.html">Add a goal</a> to see your analytics.</p>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="supabase.js"></script>
+    <script src="auth-guard.js"></script>
+    <script src="dashboard.js"></script>
+    <script src="ai-engine.js"></script>
+    <script src="gemini.js"></script>
+    <script src="chat-widget.js"></script>
+</body>
+
+</html>

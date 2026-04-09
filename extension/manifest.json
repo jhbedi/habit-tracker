@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "getItRight Smart Tracker Helper",
+  "version": "1.0",
+  "description": "Helper extension for getItRight to auto-pause the timer when you switch away from tracked websites.",
+  "permissions": [
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "file:///*",
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}

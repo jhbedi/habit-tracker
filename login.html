@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="getItRight - Sign in to track your goals and build better habits">
+    <title>getItRight - Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="theme-switch.js"></script>
+</head>
+
+<body>
+    <div class="auth-page">
+        <!-- Floating theme toggle -->
+        <button id="themeToggleBtn" class="nav-icon-btn floating-toggle" title="Toggle Theme">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+        </button>
+
+        <!-- Floating logo -->
+        <div class="auth-logo">
+            <svg class="logo-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="6"></circle>
+                <circle cx="12" cy="12" r="2"></circle>
+            </svg>
+            <h1>getItRight</h1>
+        </div>
+
+        <!-- Auth Card -->
+        <div class="auth-card">
+            <!-- Tab Switcher -->
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="loginTab" onclick="switchTab('login')">Sign In</button>
+                <button class="auth-tab" id="signupTab" onclick="switchTab('signup')">Sign Up</button>
+            </div>
+
+            <!-- Login Form -->
+            <form class="auth-form" id="loginForm" onsubmit="handleLogin(event)">
+                <div class="auth-field">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" placeholder="you@example.com" required autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••" required
+                        autocomplete="current-password" minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="loginBtn">Sign In</button>
+                <p class="auth-error" id="loginError"></p>
+            </form>
+
+            <!-- Signup Form -->
+            <form class="auth-form" id="signupForm" style="display:none" onsubmit="handleSignup(event)">
+                <div class="auth-field">
+                    <label for="signupEmail">Email</label>
+                    <input type="email" id="signupEmail" placeholder="you@example.com" required autocomplete="email">
+                </div>
+                <div class="auth-field">
+                    <label for="signupPassword">Password</label>
+                    <input type="password" id="signupPassword" placeholder="Min 6 characters" required
+                        autocomplete="new-password" minlength="6">
+                </div>
+                <div class="auth-field">
+                    <label for="signupConfirm">Confirm Password</label>
+                    <input type="password" id="signupConfirm" placeholder="••••••••" required
+                        autocomplete="new-password" minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary auth-submit" id="signupBtn">Create Account</button>
+                <p class="auth-error" id="signupError"></p>
+                <p class="auth-success" id="signupSuccess"></p>
+            </form>
+        </div>
+
+        <p class="auth-footer">Track habits. Build consistency. Get it right.</p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase.js"></script>
+    <script src="auth.js"></script>
+</body>
+
+</html>
