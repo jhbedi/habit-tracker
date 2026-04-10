@@ -14,6 +14,7 @@
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="app-container dashboard">
         <!-- Header -->
         <header class="header">
@@ -26,18 +27,18 @@
                 </svg>
                 <h1>getItRight</h1>
             </div>
-            <nav class="nav">
+            <nav class="nav" aria-label="Main navigation">
                 <a href="index.html" class="nav-link active">Dashboard</a>
                 <a href="tracking.html" class="nav-link">Track Progress</a>
                 <a href="add-goal.html" class="nav-link">Add Goal</a>
                 <a href="ai-insights.html" class="nav-link">AI Insights</a>
-                <button id="themeToggleBtn" class="nav-icon-btn" title="Toggle Theme">
+                <button id="themeToggleBtn" class="nav-icon-btn" title="Toggle Theme" aria-label="Toggle dark and light theme">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round"
                             d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                     </svg>
                 </button>
-                <button class="nav-logout" onclick="handleLogout()" title="Sign out">
+                <button class="nav-logout" onclick="handleLogout()" title="Sign out" aria-label="Sign out of your account">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                         <polyline points="16 17 21 12 16 7"></polyline>
@@ -48,15 +49,19 @@
         </header>
 
         <!-- Dashboard Content -->
-        <main class="main-content">
+        <main class="main-content" id="main-content" role="main">
             <!-- Active Tracking Banner (Hidden by default) -->
             <div id="activeTrackingBanner" class="tracking-banner" style="display: none;">
                 <div class="tracking-banner-content">
                     <span class="tracking-dot"></span>
                     <span id="trackingStatusText">Tracking time on <strong>example.com</strong> for <strong
                             id="trackingHabitName">Habit</strong></span>
+                    <span class="tracking-status-badge active" id="trackingStatusBadge">● ACTIVE</span>
                 </div>
-                <div class="tracking-timer" id="trackingTimerDisplay">00:00</div>
+                <div class="tracking-timer-group">
+                    <div class="tracking-timer" id="trackingTimerDisplay">00:00</div>
+                    <div class="tracking-active-time" id="trackingActiveDisplay" title="Only active time is saved">Active: 00:00</div>
+                </div>
                 <div style="display: flex; gap: 0.5rem;">
                     <button class="btn btn-secondary btn-sm" onclick="stopSmartLinkTracking(true)">Stop</button>
                 </div>
@@ -102,6 +107,17 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Recent Tracking History -->
+            <section class="tracking-history-section" id="trackingHistorySection">
+                <div class="section-header">
+                    <h2>Recent Activity</h2>
+                    <span class="history-count" id="historyCount"></span>
+                </div>
+                <div class="tracking-history-list" id="trackingHistoryList">
+                    <!-- Populated by JS -->
+                </div>
+            </section>
 
             <section class="section-header">
                 <h2>Weekly Progress</h2>
@@ -229,6 +245,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="supabase.js"></script>
     <script src="auth-guard.js"></script>
+    <script src="shared.js"></script>
     <script src="dashboard.js"></script>
     <script src="ai-engine.js"></script>
     <script src="gemini.js"></script>

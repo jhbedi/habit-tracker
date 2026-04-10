@@ -1,11 +1,40 @@
 /**
  * getItRight — AI Client via OpenRouter (gemini.js)
- * Calls Google Gemini 2.0 Flash through OpenRouter for intelligent habit coaching
+ * Calls Google Gemini 2.0 Flash through OpenRouter for intelligent habit coaching.
+ *
+ * SECURITY: When deploying to production, set GEMINI_PROXY_URL to your own
+ * server-side proxy (e.g. Supabase Edge Function) so the API key is never
+ * exposed in client code.
  */
 
+// =====================================================
+// Configuration
+// =====================================================
+
+/**
+ * Set this to your server-side proxy URL to keep the API key safe.
+ * Example: 'https://your-project.supabase.co/functions/v1/ai-proxy'
+ * When set, all AI calls go through the proxy and no API key is sent client-side.
+ * When null/empty, falls back to direct OpenRouter calls (dev mode only).
+ */
+const GEMINI_PROXY_URL = null;
+
+// Direct-mode config (only used when GEMINI_PROXY_URL is not set)
 const OPENROUTER_API_KEY = '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';
 const AI_MODEL = 'google/gemini-2.0-flash-001';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+// Warn once about exposed key in direct mode
+let _keyWarningShown = false;
+function _warnDirectMode() {
+    if (!_keyWarningShown && !GEMINI_PROXY_URL) {
+        console.warn(
+            '⚠️ [getItRight] AI calls are using a client-side API key (direct mode). ' +
+            'For production, set GEMINI_PROXY_URL in gemini.js to route calls through a server-side proxy.'
+        );
+        _keyWarningShown = true;
+    }
+}
 
 const SYSTEM_PROMPT = `You are the AI coach inside "getItRight", a personal habit tracker app. You help users understand and improve their habits.
 
@@ -95,37 +124,54 @@ ${suggestionLines || 'No suggestions generated yet'}`;
 }
 
 /**
- * Call AI via OpenRouter with the user's question + habit context
- * Returns the AI response text, or null on failure
+ * Call AI via OpenRouter (or proxy) with the user's question + habit context.
+ * Integrates with AIRateLimiter from shared.js when available.
+ * Returns the AI response text, or null on failure.
  */
 async function callGemini(userQuery, analysisResults) {
+    // Rate limit check (shared.js must be loaded)
+    if (typeof AIRateLimiter !== 'undefined') {
+        const check = AIRateLimiter.check();
+        if (!check.allowed) {
+            console.warn('AI rate limited:', check.message);
+            return null;
+        }
+    }
+
     const habitContext = buildHabitContext(analysisResults);
 
-    const body = {
-        model: AI_MODEL,
-        messages: [
-            {
-                role: 'system',
-                content: SYSTEM_PROMPT
-            },
-            {
-                role: 'user',
-                content: `${habitContext}\n\n---\nUser question: ${userQuery}`
-            }
-        ],
-        max_tokens: 300,
-        temperature: 0.7
-    };
+    const messages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `${habitContext}\n\n---\nUser question: ${userQuery}` }
+    ];
 
     try {
-        const res = await fetch(OPENROUTER_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENROUTER_API_KEY}`
-            },
-            body: JSON.stringify(body)
-        });
+        let res;
+
+        if (GEMINI_PROXY_URL) {
+            // ── Proxy mode: send to your own server (no API key in client) ──
+            res = await fetch(GEMINI_PROXY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages, max_tokens: 300, temperature: 0.7 })
+            });
+        } else {
+            // ── Direct mode: call OpenRouter directly (dev only) ──
+            _warnDirectMode();
+            res = await fetch(OPENROUTER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: AI_MODEL,
+                    messages,
+                    max_tokens: 300,
+                    temperature: 0.7
+                })
+            });
+        }
 
         if (!res.ok) {
             console.error('AI API error:', res.status, await res.text());
@@ -134,6 +180,12 @@ async function callGemini(userQuery, analysisResults) {
 
         const data = await res.json();
         const text = data?.choices?.[0]?.message?.content;
+
+        // Record successful call with rate limiter
+        if (typeof AIRateLimiter !== 'undefined') {
+            AIRateLimiter.record();
+        }
+
         return text || null;
     } catch (err) {
         console.error('AI fetch failed:', err);

@@ -11,6 +11,7 @@ let goalsCache = [];
 let charts = {};
 let trendViewMode = 'weekly-daily';
 let showAllGoals = false;
+let showCompletedGoals = false;
 
 // Smart Link Tracking State
 let trackingWindow = null;
@@ -21,6 +22,9 @@ let trackingUrl = null;
 let trackingAccumulatedSeconds = 0;
 let isTrackingPaused = false;
 let extensionInstalled = false;
+
+// Task Logs Cache (for actual duration tracking)
+let taskLogsCache = [];
 
 // Extension handshake — content.js fires this event when it loads
 document.addEventListener('getItRight_EXTENSION_READY', () => {
@@ -56,7 +60,11 @@ function getSortedGoals() {
 }
 
 function getVisibleGoals() {
-    const sorted = getSortedGoals();
+    let sorted = getSortedGoals();
+    // Filter out completed goals if toggle is off
+    if (!showCompletedGoals) {
+        sorted = sorted.filter(g => !isGoalCompleted(g));
+    }
     return showAllGoals ? sorted : sorted.slice(0, 7);
 }
 
@@ -68,6 +76,17 @@ function toggleShowMore() {
         btn.textContent = showAllGoals ? 'Show Less' : `Show More (${total - 7} hidden)`;
         btn.style.display = total <= 7 ? 'none' : 'inline-flex';
     }
+    renderCharts();
+}
+
+function toggleCompletedGoals() {
+    showCompletedGoals = !showCompletedGoals;
+    const btn = document.getElementById('toggleCompletedBtn');
+    if (btn) {
+        btn.textContent = showCompletedGoals ? 'Hide Completed' : 'Show Completed';
+        btn.classList.toggle('active', showCompletedGoals);
+    }
+    updateStats();
     renderCharts();
 }
 
@@ -146,11 +165,68 @@ async function fetchGoals() {
 
         await ensureUnproductiveGoal();
 
+        // Also fetch task_logs for actual duration data
+        await fetchTaskLogs();
+
         return goalsCache;
     } catch (error) {
         console.error('Error fetching goals:', error);
         return [];
     }
+}
+
+// =====================================================
+// Task Logs — Actual Duration Tracking
+// =====================================================
+
+async function fetchTaskLogs() {
+    try {
+        const { data, error } = await window.supabase
+            .from('task_logs')
+            .select('*')
+            .order('logged_at', { ascending: false });
+
+        if (error) throw error;
+        taskLogsCache = data || [];
+    } catch (err) {
+        console.warn('Could not fetch task logs:', err);
+        taskLogsCache = [];
+    }
+}
+
+/**
+ * Get total actual tracked minutes for a goal (all time).
+ * Falls back to estimate if no task_logs exist for the goal.
+ */
+function getActualMinutesForGoal(goalId, fallbackPerDay, daysCompleted) {
+    const logs = taskLogsCache.filter(log => log.goal_id === goalId);
+    if (logs.length === 0) {
+        return daysCompleted * fallbackPerDay; // estimate
+    }
+    return logs.reduce((sum, log) => sum + (log.duration_minutes || 0), 0);
+}
+
+/**
+ * Get actual tracked minutes for a goal within a date range.
+ * Falls back to estimate if no task_logs exist for the goal in that range.
+ */
+function getActualMinutesInRange(goalId, startDate, endDate, fallbackPerDay, daysInRange) {
+    const logs = taskLogsCache.filter(log => {
+        if (log.goal_id !== goalId) return false;
+        const logDate = new Date(log.logged_at);
+        return logDate >= startDate && logDate <= endDate;
+    });
+    if (logs.length === 0) {
+        return daysInRange * fallbackPerDay; // estimate
+    }
+    return logs.reduce((sum, log) => sum + (log.duration_minutes || 0), 0);
+}
+
+/**
+ * Check if a goal has any task_logs (meaning actual tracking data exists).
+ */
+function goalHasTaskLogs(goalId) {
+    return taskLogsCache.some(log => log.goal_id === goalId);
 }
 
 // =====================================================
@@ -204,13 +280,19 @@ function calculateWeeklyStats() {
             weeklyDaysTarget += targetDays;
 
             // Count completed days this week
+            let weeklyDaysInRange = 0;
             goal.dailyProgress.forEach(dateStr => {
                 const date = new Date(dateStr);
                 if (date >= monday && date <= sunday) {
                     weeklyDaysCompleted++;
-                    weeklyTimeMinutes += goal.timePerDay;
+                    weeklyDaysInRange++;
                 }
             });
+
+            // Use actual tracked time from task_logs, fallback to estimate
+            weeklyTimeMinutes += getActualMinutesInRange(
+                goal.id, monday, sunday, goal.timePerDay, weeklyDaysInRange
+            );
         }
     });
 
@@ -235,9 +317,9 @@ function calculateOverallStats() {
         totalDaysTarget += goalDays;
         totalDaysCompleted += daysCompleted;
 
-        // Hours: timePerDay * days
+        // Hours: use actual tracked time from task_logs when available
         totalHoursTarget += (goalDays * goal.timePerDay) / 60;
-        totalHoursCompleted += (daysCompleted * goal.timePerDay) / 60;
+        totalHoursCompleted += getActualMinutesForGoal(goal.id, goal.timePerDay, daysCompleted) / 60;
     });
 
     const daysPercent = totalDaysTarget > 0
@@ -272,10 +354,10 @@ function calculateGoalProgress() {
 
 function calculateTimeInvested() {
     return getVisibleGoals().map(goal => {
-        const hoursSpent = (goal.dailyProgress.length * goal.timePerDay) / 60;
+        const actualMinutes = getActualMinutesForGoal(goal.id, goal.timePerDay, goal.dailyProgress.length);
         return {
             title: goal.title.length > 15 ? goal.title.substring(0, 15) + '...' : goal.title,
-            hours: Math.round(hoursSpent * 10) / 10
+            hours: Math.round(actualMinutes / 60 * 10) / 10
         };
     });
 }
@@ -284,7 +366,7 @@ function calculatePriorityDistribution() {
     const distribution = { critical: 0, high: 0, medium: 0, low: 0 };
 
     goalsCache.forEach(goal => {
-        const minutes = goal.dailyProgress.length * goal.timePerDay;
+        const minutes = getActualMinutesForGoal(goal.id, goal.timePerDay, goal.dailyProgress.length);
         const priority = goal.priority || 'medium';
         distribution[priority] = (distribution[priority] || 0) + minutes;
     });
@@ -296,7 +378,7 @@ function calculateEffortDistribution() {
     const distribution = { hard: 0, medium: 0, easy: 0 };
 
     goalsCache.forEach(goal => {
-        const minutes = goal.dailyProgress.length * goal.timePerDay;
+        const minutes = getActualMinutesForGoal(goal.id, goal.timePerDay, goal.dailyProgress.length);
         const effort = goal.effort || 'medium';
         distribution[effort] = (distribution[effort] || 0) + minutes;
     });
@@ -367,13 +449,19 @@ function getViewStats(viewMode) {
             const daysInRange = Math.ceil((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)) + 1;
             daysTarget += daysInRange;
 
+            let daysInRangeCount = 0;
             goal.dailyProgress.forEach(dateStr => {
                 const date = new Date(dateStr);
                 if (date >= dateRange.start && date <= dateRange.end) {
                     daysCompleted++;
-                    timeMinutes += goal.timePerDay;
+                    daysInRangeCount++;
                 }
             });
+
+            // Use actual tracked time from task_logs, fallback to estimate
+            timeMinutes += getActualMinutesInRange(
+                goal.id, dateRange.start, dateRange.end, goal.timePerDay, daysInRangeCount
+            );
         }
     });
 
@@ -499,18 +587,22 @@ function getViewTimeInvested(viewMode) {
     }
 
     return getVisibleGoals().map(goal => {
-        let hoursSpent = 0;
+        let daysInRangeCount = 0;
 
         goal.dailyProgress.forEach(dateStr => {
             const date = new Date(dateStr);
             if (date >= dateRange.start && date <= dateRange.end) {
-                hoursSpent += goal.timePerDay / 60;
+                daysInRangeCount++;
             }
         });
 
+        const actualMinutes = getActualMinutesInRange(
+            goal.id, dateRange.start, dateRange.end, goal.timePerDay, daysInRangeCount
+        );
+
         return {
             title: goal.title.length > 15 ? goal.title.substring(0, 15) + '...' : goal.title,
-            hours: Math.round(hoursSpent * 10) / 10
+            hours: Math.round(actualMinutes / 60 * 10) / 10
         };
     });
 }
@@ -1143,15 +1235,195 @@ function renderCharts() {
         );
     }
 }
+// =====================================================
+// Tracking History (localStorage-backed)
+// =====================================================
+
+const TRACKING_HISTORY_KEY = 'getItRight_trackingHistory';
+
+/**
+ * Save a completed Smart Link session to localStorage.
+ */
+function saveTrackingToLocalHistory(url, goalName, minutes) {
+    try {
+        const history = JSON.parse(localStorage.getItem(TRACKING_HISTORY_KEY) || '[]');
+        history.unshift({
+            url: url || 'unknown',
+            goal: goalName,
+            minutes: minutes,
+            timestamp: new Date().toISOString()
+        });
+        // Keep only last 20 entries
+        if (history.length > 20) history.length = 20;
+        localStorage.setItem(TRACKING_HISTORY_KEY, JSON.stringify(history));
+    } catch (e) {
+        console.warn('Could not save tracking history:', e);
+    }
+}
+
+/**
+ * Get tracking history — merges localStorage + task_logs, deduplicates, returns latest 5.
+ */
+function getTrackingHistory() {
+    let entries = [];
+
+    // 1) Pull from localStorage (always available)
+    try {
+        const local = JSON.parse(localStorage.getItem(TRACKING_HISTORY_KEY) || '[]');
+        local.forEach(item => {
+            entries.push({
+                url: item.url,
+                goal: item.goal,
+                minutes: item.minutes,
+                timestamp: item.timestamp
+            });
+        });
+    } catch (e) { /* ignore */ }
+
+    // 2) Merge from task_logs if available (in case localStorage was cleared)
+    if (taskLogsCache && taskLogsCache.length > 0) {
+        taskLogsCache
+            .filter(log => log.notes && log.notes.startsWith('Smart Link session:'))
+            .forEach(log => {
+                const urlStr = log.notes.replace('Smart Link session: ', '').trim();
+                const goal = goalsCache.find(g => g.id === log.goal_id);
+                const ts = log.logged_at;
+
+                // Skip if already in entries (same timestamp within 60s)
+                const isDuplicate = entries.some(e => {
+                    return Math.abs(new Date(e.timestamp) - new Date(ts)) < 60000;
+                });
+                if (!isDuplicate) {
+                    entries.push({
+                        url: urlStr,
+                        goal: goal ? goal.title : 'Unknown',
+                        minutes: log.duration_minutes || 0,
+                        timestamp: ts
+                    });
+                }
+            });
+    }
+
+    // Sort by timestamp (newest first) and limit to 5
+    entries.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    return entries.slice(0, 5);
+}
+
+function renderTrackingHistory() {
+    const section = document.getElementById('trackingHistorySection');
+    const list = document.getElementById('trackingHistoryList');
+    const countEl = document.getElementById('historyCount');
+    if (!section || !list) return;
+
+    section.style.display = 'block';
+
+    const entries = getTrackingHistory();
+
+    if (entries.length === 0) {
+        if (countEl) countEl.textContent = '';
+        list.innerHTML = `
+            <div class="history-empty">
+                <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-bottom:0.5rem;opacity:0.4;">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <div>No tracking sessions yet</div>
+                <div style="font-size:0.7rem;margin-top:0.25rem;">Paste a link above and hit "Launch & Track" to start</div>
+            </div>
+        `;
+        return;
+    }
+
+    if (countEl) countEl.textContent = `${entries.length} session${entries.length !== 1 ? 's' : ''}`;
+
+    list.innerHTML = entries.map(entry => {
+        // Parse hostname
+        let hostname = entry.url;
+        let fullUrl = entry.url;
+        try {
+            const urlObj = new URL(entry.url.startsWith('http') ? entry.url : 'https://' + entry.url);
+            hostname = urlObj.hostname.replace('www.', '');
+            fullUrl = urlObj.href;
+        } catch (e) {
+            hostname = entry.url || 'unknown';
+        }
+
+        const goalName = entry.goal || 'Unknown';
+        const isUnproductive = goalName.toLowerCase() === 'unproductive';
+
+        // Duration formatting
+        const mins = entry.minutes || 0;
+        let durationStr;
+        if (mins >= 60) {
+            const h = Math.floor(mins / 60);
+            const m = mins % 60;
+            durationStr = m > 0 ? `${h}h ${m}m` : `${h}h`;
+        } else {
+            durationStr = `${mins}m`;
+        }
+
+        const durClass = isUnproductive ? 'unproductive' : (mins > 0 ? 'productive' : 'neutral');
+        const timeAgo = getRelativeTime(new Date(entry.timestamp));
+
+        // Favicon
+        const faviconUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+        const domainInitial = hostname.charAt(0).toUpperCase();
+
+        return `
+            <div class="history-item">
+                <div class="history-favicon">
+                    <img src="${faviconUrl}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                    <span class="favicon-fallback" style="display:none;">${domainInitial}</span>
+                </div>
+                <div class="history-details">
+                    <div class="history-domain" title="${fullUrl}">${hostname}</div>
+                    <div class="history-goal">${goalName}</div>
+                </div>
+                <div class="history-duration ${durClass}">${durationStr}</div>
+                <div class="history-time">${timeAgo}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function getRelativeTime(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 // =====================================================
 // Initialize
 // =====================================================
 
 document.addEventListener('DOMContentLoaded', async () => {
-    await fetchGoals();
-    updateStats();
-    renderCharts();
+    try {
+        await fetchGoals();
+        updateStats();
+        renderCharts();
+    } catch (err) {
+        console.error('Dashboard init error:', err);
+    }
+    // Always render tracking history (uses localStorage, doesn't need Supabase)
+    if (!localStorage.getItem(TRACKING_HISTORY_KEY)) {
+        const dummyHistory = [
+            {url: 'leetcode.com', goal: 'Study DSA', minutes: 45, timestamp: new Date(Date.now() - 3600000).toISOString()},
+            {url: 'github.com', goal: 'Build Projects', minutes: 120, timestamp: new Date(Date.now() - 7200000).toISOString()},
+            {url: 'instagram.com', goal: 'Unproductive', minutes: 15, timestamp: new Date(Date.now() - 10800000).toISOString()},
+            {url: 'coursera.org', goal: 'Learn Web Dev', minutes: 65, timestamp: new Date(Date.now() - 86400000).toISOString()},
+            {url: 'youtube.com', goal: 'Unproductive', minutes: 30, timestamp: new Date(Date.now() - 172800000).toISOString()}
+        ];
+        localStorage.setItem(TRACKING_HISTORY_KEY, JSON.stringify(dummyHistory));
+    }
+    renderTrackingHistory();
 
     // Custom dropdown functionality
     const customDropdown = document.getElementById('customTrendDropdown');
@@ -1269,11 +1541,151 @@ function handleSmartLinkEnter(e) {
     }
 }
 
-// Known distracting domains to auto-match "Unproductive"
-const distractingDomains = [
-    'instagram.com', 'facebook.com', 'twitter.com', 'x.com',
-    'tiktok.com', 'youtube.com', 'netflix.com', 'reddit.com'
-];
+// =====================================================
+// Smart Domain Categorization
+// =====================================================
+
+/**
+ * Domain → category + keywords map.
+ * category: maps to goal categories in the app (work, health, personal, etc.)
+ * keywords: words to match against goal titles for smarter auto-selection
+ * type: 'productive' | 'unproductive' | 'neutral'
+ */
+const domainCategoryMap = {
+    // ── Distracting / Unproductive ──
+    'instagram.com':    { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'facebook.com':     { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'twitter.com':      { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'x.com':            { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'tiktok.com':       { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'snapchat.com':     { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'pinterest.com':    { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'tumblr.com':       { category: 'personal', type: 'unproductive', keywords: ['social', 'media', 'distraction'] },
+    'netflix.com':      { category: 'personal', type: 'unproductive', keywords: ['entertainment', 'streaming', 'movies'] },
+    'primevideo.com':   { category: 'personal', type: 'unproductive', keywords: ['entertainment', 'streaming', 'movies'] },
+    'disneyplus.com':   { category: 'personal', type: 'unproductive', keywords: ['entertainment', 'streaming', 'movies'] },
+    'hulu.com':         { category: 'personal', type: 'unproductive', keywords: ['entertainment', 'streaming', 'movies'] },
+    'twitch.tv':        { category: 'personal', type: 'unproductive', keywords: ['gaming', 'streaming', 'entertainment'] },
+    'reddit.com':       { category: 'personal', type: 'unproductive', keywords: ['social', 'forum', 'distraction'] },
+    '9gag.com':         { category: 'personal', type: 'unproductive', keywords: ['memes', 'distraction'] },
+
+    // ── Coding / Development ──
+    'github.com':       { category: 'work', type: 'productive', keywords: ['coding', 'programming', 'development', 'project', 'code'] },
+    'gitlab.com':       { category: 'work', type: 'productive', keywords: ['coding', 'programming', 'development', 'code'] },
+    'bitbucket.org':    { category: 'work', type: 'productive', keywords: ['coding', 'programming', 'development'] },
+    'stackoverflow.com':{ category: 'work', type: 'productive', keywords: ['coding', 'programming', 'debug', 'problem'] },
+    'codepen.io':       { category: 'work', type: 'productive', keywords: ['coding', 'frontend', 'css', 'web'] },
+    'replit.com':       { category: 'work', type: 'productive', keywords: ['coding', 'programming', 'practice'] },
+    'codesandbox.io':   { category: 'work', type: 'productive', keywords: ['coding', 'frontend', 'web'] },
+    'vercel.com':       { category: 'work', type: 'productive', keywords: ['deployment', 'web', 'project'] },
+    'netlify.com':      { category: 'work', type: 'productive', keywords: ['deployment', 'web', 'hosting'] },
+    'npmjs.com':        { category: 'work', type: 'productive', keywords: ['coding', 'packages', 'javascript'] },
+    'developer.mozilla.org': { category: 'work', type: 'productive', keywords: ['web', 'documentation', 'learning', 'mdn'] },
+
+    // ── Competitive Programming / DSA ──
+    'leetcode.com':     { category: 'work', type: 'productive', keywords: ['dsa', 'coding', 'algorithm', 'problem', 'practice', 'leetcode', 'competitive'] },
+    'hackerrank.com':   { category: 'work', type: 'productive', keywords: ['dsa', 'coding', 'algorithm', 'practice', 'competitive'] },
+    'codeforces.com':   { category: 'work', type: 'productive', keywords: ['dsa', 'coding', 'algorithm', 'competitive', 'contest'] },
+    'codechef.com':     { category: 'work', type: 'productive', keywords: ['dsa', 'coding', 'algorithm', 'competitive'] },
+    'atcoder.jp':       { category: 'work', type: 'productive', keywords: ['dsa', 'coding', 'algorithm', 'competitive'] },
+    'geeksforgeeks.org':{ category: 'work', type: 'productive', keywords: ['dsa', 'coding', 'algorithm', 'learning', 'study'] },
+    'neetcode.io':      { category: 'work', type: 'productive', keywords: ['dsa', 'coding', 'algorithm', 'practice', 'leetcode'] },
+
+    // ── Learning / Education ──
+    'coursera.org':     { category: 'work', type: 'productive', keywords: ['learning', 'course', 'study', 'education', 'online'] },
+    'udemy.com':        { category: 'work', type: 'productive', keywords: ['learning', 'course', 'study', 'education'] },
+    'edx.org':          { category: 'work', type: 'productive', keywords: ['learning', 'course', 'study', 'education'] },
+    'khanacademy.org':  { category: 'work', type: 'productive', keywords: ['learning', 'study', 'math', 'education'] },
+    'freecodecamp.org': { category: 'work', type: 'productive', keywords: ['learning', 'coding', 'web', 'study'] },
+    'w3schools.com':    { category: 'work', type: 'productive', keywords: ['learning', 'web', 'reference', 'study'] },
+    'brilliant.org':    { category: 'work', type: 'productive', keywords: ['learning', 'math', 'science', 'study'] },
+    'duolingo.com':     { category: 'personal', type: 'productive', keywords: ['learning', 'language', 'study', 'practice'] },
+    'skillshare.com':   { category: 'work', type: 'productive', keywords: ['learning', 'creative', 'course', 'design'] },
+
+    // ── Reading / Knowledge ──
+    'medium.com':       { category: 'personal', type: 'neutral', keywords: ['reading', 'blog', 'learning', 'article'] },
+    'dev.to':           { category: 'work', type: 'productive', keywords: ['reading', 'coding', 'blog', 'learning', 'tech'] },
+    'hashnode.com':     { category: 'work', type: 'productive', keywords: ['reading', 'coding', 'blog', 'learning'] },
+    'wikipedia.org':    { category: 'personal', type: 'neutral', keywords: ['research', 'reading', 'learning', 'reference'] },
+
+    // ── YouTube (special case — can be productive or not) ──
+    'youtube.com':      { category: 'personal', type: 'neutral', keywords: ['video', 'tutorial', 'learning', 'entertainment'] },
+
+    // ── Health & Fitness ──
+    'strava.com':       { category: 'health', type: 'productive', keywords: ['fitness', 'exercise', 'running', 'cycling', 'workout'] },
+    'myfitnesspal.com': { category: 'health', type: 'productive', keywords: ['fitness', 'nutrition', 'diet', 'health', 'tracking'] },
+    'headspace.com':    { category: 'health', type: 'productive', keywords: ['meditation', 'mindfulness', 'mental', 'health'] },
+    'calm.com':         { category: 'health', type: 'productive', keywords: ['meditation', 'sleep', 'mindfulness', 'health'] },
+
+    // ── Work / Productivity Tools ──
+    'notion.so':        { category: 'work', type: 'productive', keywords: ['notes', 'planning', 'productivity', 'work', 'writing'] },
+    'trello.com':       { category: 'work', type: 'productive', keywords: ['planning', 'tasks', 'project', 'management'] },
+    'figma.com':        { category: 'work', type: 'productive', keywords: ['design', 'ui', 'ux', 'creative', 'prototype'] },
+    'docs.google.com':  { category: 'work', type: 'productive', keywords: ['writing', 'document', 'work', 'study'] },
+    'kaggle.com':       { category: 'work', type: 'productive', keywords: ['data', 'machine learning', 'ai', 'science', 'analysis'] },
+
+    // ── Finance / Professional ──
+    'linkedin.com':     { category: 'work', type: 'neutral', keywords: ['networking', 'career', 'professional', 'job'] },
+};
+
+/**
+ * Score how well a goal matches domain keywords. Higher = better match.
+ * Uses both category matching and keyword overlap with goal title.
+ */
+function scoreGoalForDomain(goal, domainInfo, hostname) {
+    let score = 0;
+    const titleLower = goal.title.toLowerCase();
+    const categoryLower = (goal.category || '').toLowerCase();
+
+    // Exact "Unproductive" match for unproductive domains
+    if (domainInfo.type === 'unproductive' && titleLower === 'unproductive') {
+        return 100;
+    }
+
+    // Category match (work → work, health → health, etc.)
+    if (domainInfo.category === categoryLower) {
+        score += 15;
+    }
+
+    // Keyword matching: check if any domain keywords appear in the goal title
+    const keywords = domainInfo.keywords || [];
+    keywords.forEach(keyword => {
+        if (titleLower.includes(keyword)) {
+            score += 20; // Strong signal
+        }
+    });
+
+    // Domain name in title (e.g., goal "LeetCode practice" matches leetcode.com)
+    const domainBase = hostname.split('.')[0]; // "leetcode" from "leetcode.com"
+    if (domainBase.length > 3 && titleLower.includes(domainBase)) {
+        score += 30; // Very strong signal
+    }
+
+    // Penalize "Unproductive" goal for productive domains
+    if (domainInfo.type === 'productive' && titleLower === 'unproductive') {
+        score -= 50;
+    }
+
+    return score;
+}
+
+/**
+ * Find the best matching domain info. Checks exact matches and partial matches
+ * (e.g., "docs.google.com" → "google.com").
+ */
+function getDomainInfo(hostname) {
+    // Exact match first
+    if (domainCategoryMap[hostname]) return domainCategoryMap[hostname];
+
+    // Partial match: check if any known domain is a suffix of the hostname
+    for (const [domain, info] of Object.entries(domainCategoryMap)) {
+        if (hostname.endsWith(domain) || hostname.includes(domain.split('.')[0])) {
+            return info;
+        }
+    }
+
+    return null; // Unknown domain
+}
 
 function openSmartLinkModal() {
     const input = document.getElementById('smartLinkInput');
@@ -1296,34 +1708,59 @@ function openSmartLinkModal() {
 
         document.getElementById('smartLinkDisplayUrl').textContent = hostname;
 
-        // Populate dropdown
+        // Smart domain analysis
+        const domainInfo = getDomainInfo(hostname);
+
+        // Score all goals against this domain
+        let scoredGoals = goalsCache.map(goal => ({
+            goal,
+            score: domainInfo ? scoreGoalForDomain(goal, domainInfo, hostname) : 0
+        }));
+
+        // Sort by score (highest first), then by title
+        scoredGoals.sort((a, b) => b.score - a.score || a.goal.title.localeCompare(b.goal.title));
+
+        // Populate dropdown with scored order
         const select = document.getElementById('smartLinkHabitSelect');
         select.innerHTML = '<option value="">Select a habit...</option>';
 
-        // Find Unproductive goal
-        const unproductiveGoal = goalsCache.find(g => g.title.toLowerCase() === 'unproductive');
-        let isDistracting = distractingDomains.some(domain => hostname.includes(domain));
+        const bestMatch = scoredGoals[0];
+        const hasGoodMatch = bestMatch && bestMatch.score >= 15;
 
-        goalsCache.forEach(goal => {
-            const isUnproductive = (goal.title.toLowerCase() === 'unproductive');
+        scoredGoals.forEach(({ goal, score }) => {
             const option = document.createElement('option');
             option.value = goal.id;
             option.textContent = goal.title;
 
-            if (isDistracting && isUnproductive) {
+            // Auto-select the best match if score is high enough
+            if (hasGoodMatch && goal.id === bestMatch.goal.id) {
                 option.selected = true;
-                select.insertAdjacentElement('afterbegin', option);
-            } else {
-                select.appendChild(option);
             }
+
+            select.appendChild(option);
         });
 
+        // Set hint message based on detection
         const hint = document.getElementById('smartLinkHint');
-        if (isDistracting) {
-            hint.textContent = "We detected a potential distraction site. Auto-selected 'Unproductive' mode.";
+
+        if (domainInfo && domainInfo.type === 'unproductive') {
+            hint.textContent = `⚠️ Distraction detected! Auto-selected 'Unproductive'. Time will be tracked as unproductive browsing.`;
             hint.style.color = "var(--warning)";
+
+        } else if (domainInfo && domainInfo.type === 'productive' && hasGoodMatch) {
+            hint.textContent = `✅ Productive site detected → auto-matched to "${bestMatch.goal.title}". Change if needed.`;
+            hint.style.color = "var(--success, #22c55e)";
+
+        } else if (domainInfo && domainInfo.type === 'neutral') {
+            hint.textContent = `ℹ️ This site could be productive or a distraction. We suggested the closest match — adjust if needed.`;
+            hint.style.color = "var(--text-muted)";
+
+        } else if (!domainInfo) {
+            hint.textContent = `Unknown site. Select which habit this browsing session counts towards.`;
+            hint.style.color = "var(--text-muted)";
+
         } else {
-            hint.textContent = "Select which habit this browsing session counts towards.";
+            hint.textContent = `Select which habit this browsing session counts towards.`;
             hint.style.color = "var(--text-muted)";
         }
 
@@ -1463,19 +1900,40 @@ function startSmartLinkTracking() {
 
     // Start UI update & tab monitor interval
     let trackingElapsedTicks = 0; // counts seconds since tracking started
+    let totalElapsedSeconds = 0;  // always increments (for display)
     trackingInterval = setInterval(() => {
         trackingElapsedTicks++;
+        totalElapsedSeconds++;
 
-        // Update timer display
-        let totalSecs = trackingAccumulatedSeconds;
+        // 1) Total elapsed time (always ticks — user can see the timer move)
+        const totalMins = String(Math.floor(totalElapsedSeconds / 60)).padStart(2, '0');
+        const totalSecs = String(totalElapsedSeconds % 60).padStart(2, '0');
+        document.getElementById('trackingTimerDisplay').textContent = `${totalMins}:${totalSecs}`;
+
+        // 2) Active-only time (pauses when tab is unfocused — this is what gets saved)
+        let activeSecs = trackingAccumulatedSeconds;
         if (!isTrackingPaused && trackingStartTime) {
             const now = new Date();
-            totalSecs += Math.floor((now - trackingStartTime) / 1000);
+            activeSecs += Math.floor((now - trackingStartTime) / 1000);
+        }
+        const activeMins = String(Math.floor(activeSecs / 60)).padStart(2, '0');
+        const activeSecsStr = String(activeSecs % 60).padStart(2, '0');
+        const activeDisplay = document.getElementById('trackingActiveDisplay');
+        if (activeDisplay) {
+            activeDisplay.textContent = `Active: ${activeMins}:${activeSecsStr}`;
         }
 
-        const mins = String(Math.floor(totalSecs / 60)).padStart(2, '0');
-        const secs = String(totalSecs % 60).padStart(2, '0');
-        document.getElementById('trackingTimerDisplay').textContent = `${mins}:${secs}`;
+        // 3) Update status badge
+        const badge = document.getElementById('trackingStatusBadge');
+        if (badge) {
+            if (isTrackingPaused) {
+                badge.textContent = '⏸ PAUSED';
+                badge.className = 'tracking-status-badge paused';
+            } else {
+                badge.textContent = '● ACTIVE';
+                badge.className = 'tracking-status-badge active';
+            }
+        }
 
         // Check if tracked tab was closed (grace period: skip first 5 seconds)
         if (trackingElapsedTicks > 5) {
@@ -1535,6 +1993,13 @@ async function stopSmartLinkTracking(manual) {
 
     document.querySelector('.smart-launcher-card').style.display = 'flex';
     document.getElementById('trackingTimerDisplay').textContent = '00:00';
+    const activeTimeEl = document.getElementById('trackingActiveDisplay');
+    if (activeTimeEl) activeTimeEl.textContent = 'Active: 00:00';
+    const badgeEl = document.getElementById('trackingStatusBadge');
+    if (badgeEl) {
+        badgeEl.textContent = '● ACTIVE';
+        badgeEl.className = 'tracking-status-badge active';
+    }
 
     if (minutesTracked < 1) {
         showTrackingToast("Tracking stopped. Session was less than a minute — no time logged.", "warning");
@@ -1545,17 +2010,10 @@ async function stopSmartLinkTracking(manual) {
             const goal = goalsCache.find(g => g.id === trackingHabitId);
             if (!goal) return;
 
-            // Find existing progress for today
+            // Add today as a flat date string (matching the format used everywhere else)
             let dailyProgress = [...goal.dailyProgress];
-            const todayIndex = dailyProgress.findIndex(p => p.date === today);
-
-            if (todayIndex >= 0) {
-                dailyProgress[todayIndex].minutes_completed += minutesTracked;
-            } else {
-                dailyProgress.push({
-                    date: today,
-                    minutes_completed: minutesTracked
-                });
+            if (!dailyProgress.includes(today)) {
+                dailyProgress.push(today);
             }
 
             const { error } = await window.supabase
@@ -1565,12 +2023,26 @@ async function stopSmartLinkTracking(manual) {
 
             if (error) throw error;
 
+            // Log to task_logs table for detailed analytics
+            if (typeof logTaskEvent === 'function') {
+                logTaskEvent(
+                    trackingHabitId,
+                    minutesTracked,
+                    `Smart Link session: ${trackingUrl || 'unknown'}`,
+                    'neutral'
+                );
+            }
+
+            // Save to localStorage for instant history rendering
+            saveTrackingToLocalHistory(trackingUrl, goal.title, minutesTracked);
+
             showTrackingToast(`Logged ${minutesTracked} min to "${goal.title}" ✓`, "success");
 
             // Reload dashboard
             fetchGoals().then(() => {
-                updateDashboardStats();
+                updateStats();
                 renderCharts();
+                renderTrackingHistory();
             });
 
         } catch (error) {

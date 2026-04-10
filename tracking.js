@@ -157,6 +157,7 @@ async function fetchGoals() {
             effort: g.effort || 'medium',
             startDate: g.start_date,
             endDate: g.end_date,
+            timePerDay: g.time_per_day || 60,
             dailyProgress: g.daily_progress || []
         }));
 
@@ -187,6 +188,7 @@ async function toggleDay(goalId, dateStr) {
 
     const progress = [...goal.dailyProgress];
     const idx = progress.indexOf(dateStr);
+    const isChecking = idx === -1; // true = adding, false = removing
 
     if (idx > -1) {
         progress.splice(idx, 1);
@@ -203,6 +205,14 @@ async function toggleDay(goalId, dateStr) {
             .eq('id', goalId);
 
         if (error) throw error;
+
+        // Log to task_logs when checking a day as completed
+        if (isChecking && typeof logTaskEvent === 'function') {
+            // Use the goal's timePerDay (stored in minutes in DB)
+            // We need the raw goal data for timePerDay since tracking cache doesn't have it
+            const timePerDay = goal.timePerDay || 60;
+            logTaskEvent(goalId, timePerDay, `Daily check: ${dateStr}`, 'neutral');
+        }
     } catch (error) {
         console.error('Error:', error);
         showToast('Error saving');
@@ -238,13 +248,18 @@ function render() {
             const inRange = isInRange(d, goal.startDate, goal.endDate);
             const checked = goal.dailyProgress.includes(d);
             const today = isToday(d);
+            const dateLabel = new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
             if (!inRange) {
-                return `<span class="checkbox disabled"></span>`;
+                return `<span class="checkbox disabled" aria-hidden="true"></span>`;
             }
 
             return `
                 <span class="checkbox ${checked ? 'checked' : ''} ${today ? 'today' : ''}"
+                      role="checkbox"
+                      aria-checked="${checked}"
+                      aria-label="${goal.title} - ${dateLabel}"
+                      tabindex="0"
                       data-goal="${goal.id}" 
                       data-date="${d}">
                     ${checked ? '✓' : ''}
@@ -328,7 +343,9 @@ goalsList.addEventListener('click', async (e) => {
 
     // Toggle visually
     checkbox.classList.toggle('checked');
-    checkbox.textContent = checkbox.classList.contains('checked') ? '✓' : '';
+    const isChecked = checkbox.classList.contains('checked');
+    checkbox.textContent = isChecked ? '✓' : '';
+    checkbox.setAttribute('aria-checked', isChecked);
 
     // Check if this completes the goal
     const goal = goalsCache.find(g => g.id === goalId);
@@ -353,6 +370,17 @@ goalsList.addEventListener('click', async (e) => {
 
         // Small delay to let confetti start before re-rendering
         setTimeout(() => render(), 500);
+    }
+});
+
+// Keyboard accessibility: Enter/Space toggles checkboxes
+goalsList.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+        const checkbox = e.target.closest('.checkbox:not(.disabled)');
+        if (checkbox) {
+            e.preventDefault();
+            checkbox.click();
+        }
     }
 });
 

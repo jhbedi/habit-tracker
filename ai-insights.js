@@ -215,6 +215,17 @@ async function handleAssistantQuery() {
     const query = input.value.trim();
     if (!query || !analysisResults) return;
 
+    // Rate limit check
+    if (typeof AIRateLimiter !== 'undefined') {
+        const check = AIRateLimiter.check();
+        if (!check.allowed) {
+            addMessage('user', query);
+            input.value = '';
+            addMessage('bot', check.message);
+            return;
+        }
+    }
+
     // Add user message
     addMessage('user', query);
     input.value = '';

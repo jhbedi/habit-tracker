@@ -33,7 +33,7 @@
             </button>
 
             <!-- Chat Popup -->
-            <div class="chat-popup" id="chatPopup">
+            <div class="chat-popup" id="chatPopup" role="dialog" aria-label="AI Coach chat">
                 <div class="chat-popup-header">
                     <div class="chat-popup-title">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -44,7 +44,7 @@
                         <span>AI Coach</span>
                         <span class="chat-popup-badge">Gemini</span>
                     </div>
-                    <button class="chat-popup-close" id="chatPopupClose">×</button>
+                    <button class="chat-popup-close" id="chatPopupClose" aria-label="Close chat">×</button>
                 </div>
                 <div class="chat-popup-messages" id="chatMessages">
                     <div class="assistant-msg bot">
@@ -53,8 +53,8 @@
                     </div>
                 </div>
                 <div class="chat-popup-input">
-                    <input type="text" id="chatInput" placeholder="Ask about your habits..." autocomplete="off">
-                    <button class="chat-popup-send" id="chatSend">
+                    <input type="text" id="chatInput" placeholder="Ask about your habits..." autocomplete="off" aria-label="Type your question for the AI coach">
+                    <button class="chat-popup-send" id="chatSend" aria-label="Send message">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <line x1="22" y1="2" x2="11" y2="13"></line>
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -228,6 +228,17 @@
         const input = document.getElementById('chatInput');
         const query = input.value.trim();
         if (!query) return;
+
+        // Rate limit check
+        if (typeof AIRateLimiter !== 'undefined') {
+            const check = AIRateLimiter.check();
+            if (!check.allowed) {
+                addChatMsg('user', query);
+                input.value = '';
+                addChatMsg('bot', check.message);
+                return;
+            }
+        }
 
         addChatMsg('user', query);
         input.value = '';

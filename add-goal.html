@@ -14,6 +14,7 @@
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="app-container compact">
         <!-- Header -->
         <header class="header">
@@ -26,18 +27,18 @@
                 </svg>
                 <h1>getItRight</h1>
             </div>
-            <nav class="nav">
+            <nav class="nav" aria-label="Main navigation">
                 <a href="index.html" class="nav-link">Dashboard</a>
                 <a href="tracking.html" class="nav-link">Track Progress</a>
                 <a href="add-goal.html" class="nav-link active">Add Goal</a>
                 <a href="ai-insights.html" class="nav-link">AI Insights</a>
-                <button id="themeToggleBtn" class="nav-icon-btn" title="Toggle Theme">
+                <button id="themeToggleBtn" class="nav-icon-btn" title="Toggle Theme" aria-label="Toggle dark and light theme">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round"
                             d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                     </svg>
                 </button>
-                <button class="nav-logout" onclick="handleLogout()" title="Sign out">
+                <button class="nav-logout" onclick="handleLogout()" title="Sign out" aria-label="Sign out of your account">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                         <polyline points="16 17 21 12 16 7"></polyline>
@@ -130,13 +131,14 @@
     </div>
 
     <!-- Toast -->
-    <div id="toast" class="toast">
+    <div id="toast" class="toast" role="status" aria-live="polite">
         <span class="toast-message">Goal added!</span>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase.js"></script>
     <script src="auth-guard.js"></script>
+    <script src="shared.js"></script>
     <script src="app.js"></script>
     <script src="ai-engine.js"></script>
     <script src="gemini.js"></script>
